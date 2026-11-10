@@ -1,0 +1,24 @@
+# Data: downloaded from Zenodo by data/download.py (keep only the code and docs)
+data/*
+!data/download.py
+!data/README.md
+
+# Training / evaluation outputs (models, split files, prediction CSVs)
+runs/
+results_pers/
+logs/
+*-persuade-bert/
+source_neg*.txt
+source_persuade*.txt
+*.bin
+*.safetensors
+*.pt
+
+# Python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.vscode/
+.idea/
+.ipynb_checkpoints/

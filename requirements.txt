@@ -1,0 +1,17 @@
+# Python 3.12. Install CPU torch first if you have no GPU:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+transformers>=4.46   # tested with 5.22 (uses eval_strategy, not evaluation_strategy)
+accelerate>=1.0
+sentencepiece        # CamemBERT tokenizer
+protobuf
+pandas>=2.0
+numpy
+scikit-learn
+nltk                 # sentence tokenisation (punkt_tab is downloaded on first run)
+langdetect           # 2021 script (del_eng_sents helper)
+# data extraction scripts only (need the original game files):
+xmltodict
+xmljson
+lxml
+ftfy
