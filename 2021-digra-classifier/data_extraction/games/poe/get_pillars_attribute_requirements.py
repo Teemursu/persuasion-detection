@@ -23,6 +23,7 @@ def getListOfFiles(dirName):
                 
     return allFiles
 
+
 skills = []
 lines = []
 game = []

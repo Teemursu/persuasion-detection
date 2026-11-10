@@ -16,6 +16,17 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
+import nltk
+from transformers import CamembertTokenizer
+from transformers.models.camembert.modeling_camembert import CamembertForSequenceClassification
+from pathlib import Path
+import re
+import string
+from langdetect import detect
+
+seed = 42
+torch.manual_seed(seed)
+random.seed(seed)
 
 class IMDbDataset(torch.utils.data.Dataset):
     def __init__(self, encodings, labels):
@@ -31,49 +42,113 @@ class IMDbDataset(torch.utils.data.Dataset):
         return len(self.labels)
 
 def clean_source(source):
-    source = [str(s).strip("\r") for s in source]
+      
+    source = [str(s).replace("\r", "") for s in source]
     source = [str(s).replace("&apos;", "'") for s in source]
+    source = [str(s).replace("\n", "") for s in source]
     source = [str(s).replace("&apos;", "'") for s in source]
     source = [str(s).replace("&quot;", '"') for s in source]
+    source = [str(s).replace("quot;", '"') for s in source]
+    source = [str(s).replace("apos;", "'") for s in source]
+    source = [str(s).replace("lt;StartAction", "") for s in source]
+    source = [str(s).replace("PERSUASION : ", "") for s in source]
     source = [str(s).replace("&lt;", "") for s in source]
     source = [str(s).replace("&gt;", "") for s in source]
     source = [str(s).replace("</string", "") for s in source]
     source = [str(s).replace(">", "") for s in source]
+    source = [str(s).replace("<", "") for s in source]
+    source = [s.rstrip() for s in source]
+    source = [s.lstrip(string.punctuation + string.whitespace) for s in source]
+    source = [x for x in source if x]
+        
+    source = [nltk.sent_tokenize(sent) for sent in source]
+    source = [j for i in source for j in i]
     return source
 
-def get_traintest_data(lang):
-  #kotor1_neg = pd.read_csv('kotor1_nonpersuade_sents',index_col=[0])
-  kotor2_neg = pd.read_csv('data/kotor2_nonpersuade_sents.csv',index_col=[0])
-  nwn_neg = pd.read_csv('data/nwn_nonpersuade_sents.csv',index_col=[0])
-  persuade_sents = pd.read_csv('data/nwn_kotor_persuade_checks_multilingual.csv', index_col=[0])
-  #kotor1_neg = random.shuffle(kotor1_neg[lang].tolist())
-  kotor2_neg = kotor2_neg[lang].tolist()
-  nwn_neg = nwn_neg[lang].tolist()
-  pos_sents = persuade_sents[lang].tolist()
+def del_eng_sents(source):
+      source_copy = []
+      for sent in source:
+            try:
+              detection = detect(sent)
+            except:
+              detection = 'en'
+            if detection != 'en':
+                  source_copy.append(sent)
+                  
+      return source_copy
+    
+def remove_stuff_between_brackets(source):
+    source = [j for i in source for j in i]
+    source = [re.sub('\[[^>]+\]', '', s) for s in source]
+    source = [re.sub('\{[^>]+\}', '', s) for s in source]
+    return source
 
-  kotor2_neg = clean_source(kotor2_neg)
-  nwn_neg = clean_source(nwn_neg)
-  persuade_sents = clean_source(persuade_sents)  
+def get_traintest_data(langs):
+  #df_kotor1_neg = pd.read_csv('data/kotor1_nonpersuade_sents.csv',index_col=[0], encoding= 'unicode_escape')
+  df_kotor2_neg = pd.read_csv('data\\en_removed\\kotor2_nonpersuade_en_removed.csv',index_col=[0],  encoding= 'utf-8', engine='python')
+  input_fd = open('data\\en_removed\\nwn_nonpersuade_en_removed.csv', encoding='utf-8', errors = 'backslashreplace')
+  df_nwn_neg = pd.read_csv(input_fd,index_col=[0], encoding= 'utf-8', engine='python')
+  df_persuade_sents = pd.read_csv('data\\en_removed\persuade_en_removed.csv', index_col=[0], encoding= 'utf-8', engine='python')
 
-  print(kotor2_neg[:5])
-  neg_sents =  kotor2_neg[:2382] + nwn_neg[:1191]
-  pos_sents = pos_sents[:794]
-  neg_sents_test = kotor2_neg[-2382:] + nwn_neg[-1191:]
-  pos_sents_test = pos_sents[-397:]
 
-  source_neg = open("source_neg.txt", "w")
+  df_kotor2_neg = df_kotor2_neg.dropna(subset=['en','de', 'it', 'es', 'fr'])
+  df_nwn_neg = df_nwn_neg.dropna(subset=['en','de', 'it', 'es', 'fr'])
+  df_persuade_sents = df_persuade_sents.dropna(subset=['en','de', 'it', 'es', 'fr'])
+  df_kotor2_neg.to_csv("kotor2_nonpersuade_en_removed.csv", encoding='utf-8')
+  df_nwn_neg.to_csv("nwn_nonpersuade_en_removed.csv", encoding='utf-8')
+  df_persuade_sents.to_csv("persuade_en_removed.csv", encoding='utf-8')
+  
+  #kotor1_neg = []  
+  kotor2_neg = []
+  nwn_neg = []
+  pos_sents = []
+  if type(langs) is list:
+    for lang in langs:
+      #kotor1_neg.append(list(set(df_kotor1_neg[lang].tolist())))
+      kotor2_neg.append(list(set(df_kotor2_neg[lang].tolist())))
+      nwn_neg.append(list(set(df_nwn_neg[lang].tolist())))
+      pos_sents.append(list(set(df_persuade_sents[lang].tolist())))
+  else:
+      #kotor1_neg.append(list(set(df_kotor1_neg[langs].tolist())))
+      kotor2_neg.append(list(set(df_kotor2_neg[langs].tolist())))
+      nwn_neg.append(list(set(df_nwn_neg[langs].tolist())))
+      pos_sents.append(list(set(df_persuade_sents[langs].tolist()))) 
+    
+  kotor2_neg = remove_stuff_between_brackets(kotor2_neg)
+  nwn_neg = remove_stuff_between_brackets(nwn_neg)
+  persuade_sents = remove_stuff_between_brackets(pos_sents)
+  print("kotor2:", len(kotor2_neg))
+  print("nwn", len(nwn_neg))
+  print("persuade", len(persuade_sents))
+#  if type(langs) is str:
+ #   if langs != 'en':
+  #        kotor2_neg = del_eng_sents(kotor2_neg)
+   #       nwn_neg = del_eng_sents(nwn_neg)
+
+  pos_num = int(len(persuade_sents)*0.7)
+  pos_test = int(len(persuade_sents)*0.3)
+  neg_sents =  clean_source(kotor2_neg[:pos_num*2]) + clean_source(nwn_neg[:pos_num]) # + clean_source(kotor1_neg[:pos_num]) 
+  pos_sents = clean_source(persuade_sents[:pos_num])
+  neg_sents_test =  clean_source(kotor2_neg[-pos_test*2:]) + clean_source(nwn_neg[-pos_test:]) # clean_source(kotor1_neg[:pos_num])
+  pos_sents_test = clean_source(persuade_sents[-pos_test:])
+  print("neg_sents_test", len(neg_sents_test))
+  print("neg_sents", len(neg_sents))
+  print("pos_sents_test", len(pos_sents_test))
+  print("pos_sents", len(pos_sents))
+
+  source_neg = open("source_neg.txt", "w", encoding='utf-8')
   for element in neg_sents:
     source_neg.write(str(element) + "\n")
 
-  source_persuade = open("source_persuade.txt", "w")
+  source_persuade = open("source_persuade.txt", "w", encoding='utf-8')
   for element in pos_sents:
     source_persuade.write(str(element) + "\n")
-  
-  source_neg_test = open("source_neg_test.txt", "w")
+
+  source_neg_test = open("source_neg_test.txt", "w", encoding='utf-8')
   for element in neg_sents_test:
     source_neg_test.write(str(element) + "\n")
 
-  source_persuade_test = open("source_persuade_test.txt", "w")
+  source_persuade_test = open("source_persuade_test.txt", "w", encoding='utf-8')
   for element in pos_sents_test:
     source_persuade_test.write(str(element) + "\n")
 
@@ -85,12 +160,28 @@ def compute_metrics(p):
     recall = recall_score(y_true=labels, y_pred=pred)
     precision = precision_score(y_true=labels, y_pred=pred)
     f1 = f1_score(y_true=labels, y_pred=pred)
-    
+
     return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
 
-def finetune(): 
-    model = BertForSequenceClassification.from_pretrained("bert-base-multilingual-cased")
-    tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
+def finetune(langs, multiling):
+    if langs == 'it' and multiling==False:
+      model = BertForSequenceClassification.from_pretrained("dbmdz/bert-base-italian-cased")
+      tokenizer = BertTokenizer.from_pretrained("dbmdz/bert-base-italian-cased")
+    if langs == 'es' and multiling==False:
+      model = BertForSequenceClassification.from_pretrained( 'dccuchile/bert-base-spanish-wwm-cased')
+      tokenizer = BertTokenizer.from_pretrained( 'dccuchile/bert-base-spanish-wwm-cased')
+    if langs== 'de' and multiling==False:
+      model = BertForSequenceClassification.from_pretrained("bert-base-german-cased")
+      tokenizer = BertTokenizer.from_pretrained("bert-base-german-cased")
+    if langs== 'fr' and multiling==False:
+      tokenizer = CamembertTokenizer.from_pretrained("./camembert-base", output_hidden_states=True)
+      model = CamembertForSequenceClassification.from_pretrained("./camembert-base")
+    if langs== 'en' and multiling==False:
+      model = BertForSequenceClassification.from_pretrained("bert-base-cased")
+      tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
+    if multiling:
+      model = BertForSequenceClassification.from_pretrained("bert-base-multilingual-cased")
+      tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
 
     source_neg = open_read("source_neg.txt").read().split("\n")
     source_pos = open_read("source_persuade.txt").read().split("\n")
@@ -104,17 +195,17 @@ def finetune():
     source = source_neg + source_pos
     labels = neg_labels + pos_labels
 
-    temp = list(zip(source, labels))
-    random.shuffle(temp)
-    source, labels = zip(*temp)
+    #temp = list(zip(source, labels))
+    #random.shuffle(temp)
+    #source, labels = zip(*temp)
 
-    train_batch, valid_batch, train_labels, valid_labels=train_test_split(source, labels, test_size=.1) 
+    train_batch, valid_batch, train_labels, valid_labels=train_test_split(source, labels, test_size=.1)
     #train_batch = open_read("nmt/source_train.txt").read().split("\n")
     train_text = tokenizer(train_batch, return_tensors='pt', padding=True, truncation=True)
     #valid_batch = open_read("nmt/source_valid.txt").read().split("\n")
     #valid_batch = source[-int(len(source)*0.1):]
     valid_text = tokenizer(valid_batch, return_tensors='pt', padding=True, truncation=True)
-    
+
     #train_labels = torch.tensor([int(x == "depression") for x in open_read("nmt/target_train.txt").read().split("\n")])
     #valid_labels = torch.tensor([int(x == "depression") for x in open_read("nmt/target_valid.txt").read().split("\n")])
 
@@ -129,13 +220,14 @@ def finetune():
     training_args = TrainingArguments(
         output_dir='./results_pers',   # output directory
         evaluation_strategy="epoch",
-        num_train_epochs=3,              # total number of training epochs
+        num_train_epochs=5,              # total number of training epochs
         per_device_train_batch_size=32,  # batch size per device during training
         per_device_eval_batch_size=64,   # batch size for evaluation
         warmup_steps=500,                # number of warmup steps for learning rate scheduler
         weight_decay=0.01,               # strength of weight decay
         logging_dir='./logs',            # directory for storing logs
         logging_steps=10,
+        seed=seed,
     )
 
     trainer = Trainer(
@@ -147,8 +239,13 @@ def finetune():
     )
 
     trainer.train()
-
-    trainer.save_model("finetuned-multiling-persuade-bert")
+    if multiling:
+      if type(langs) is list:
+      	trainer.save_model("multilang-finetuned-multilingual-persuade-bert")
+      else:
+        trainer.save_model("{}-finetuned-multilingual-persuade-bert".format(langs))
+    else:
+        trainer.save_model("{}-finetuned-persuade-bert".format(langs))
 
 def _resulter(two_turds):
 	if two_turds[0] > two_turds[1]:
@@ -176,8 +273,37 @@ def eval(shit_pile):
         print(l, vs["cor"]/(vs["cor"]+vs["err"]))
 
 
-def predict():
-  tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
+def predict(langs, multiling):
+  if langs == 'it' and multiling==False:
+      tokenizer = BertTokenizer.from_pretrained("dbmdz/bert-base-italian-cased")
+  if langs == 'es' and multiling==False:
+      tokenizer = BertTokenizer.from_pretrained( 'dccuchile/bert-base-spanish-wwm-cased')
+  if langs== 'de' and multiling==False:
+      tokenizer = BertTokenizer.from_pretrained("bert-base-german-cased")
+  if langs== 'fr' and multiling==False:
+      tokenizer = CamembertTokenizer.from_pretrained("./camembert-base", output_hidden_states=True)
+  if langs== 'en' and multiling==False:
+      tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
+  if langs == 'it' and multiling==True:
+      tokenizer = BertTokenizer.from_pretrained("dbmdz/bert-base-italian-cased")
+  if langs == 'es' and multiling==True:
+      tokenizer = BertTokenizer.from_pretrained( 'dccuchile/bert-base-spanish-wwm-cased')
+  if langs== 'de' and multiling==True:
+      tokenizer = BertTokenizer.from_pretrained("bert-base-german-cased")
+  if langs== 'fr' and multiling==True:
+      tokenizer = CamembertTokenizer.from_pretrained("./camembert-base", output_hidden_states=True)
+      model ="{}-finetuned-persuade-bert".format(langs)
+  if langs== 'en' and multiling==True:
+      tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
+  if multiling == True:
+      model = "{}-finetuned-multilingual-persuade-bert".format(langs)
+  if multiling == False:
+      model = "{}-finetuned-persuade-bert".format(langs)
+  if type(langs) is list:
+      tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
+      model = "multilang-finetuned-multilingual-persuade-bert"
+      
+  
   pos_test = open_read("source_persuade_test.txt").read().split("\n")
   neg_test = open_read("source_neg_test.txt").read().split("\n")
 
@@ -188,16 +314,20 @@ def predict():
   for i in range(len(neg_test)):
     neg_test_labels.append('no_persuade')
 
-  test_dataset = neg_test + pos_test
+  test_source = neg_test + pos_test
   test_labels = neg_test_labels + pos_test_labels
-  temp = list(zip(test_dataset, test_labels))
-  random.shuffle(temp)
-  test_source, test_labels = zip(*temp)
 
   test_text = tokenizer(test_source, return_tensors='pt', padding=True, truncation=True)
   test_labels = torch.tensor([int(x == "persuade") for x in test_labels])
   test_dataset = IMDbDataset(test_text, test_labels)
-  model = BertForSequenceClassification.from_pretrained("finetuned-persuade-bert")
+  model_path = str(model)
+  if type(langs) is str:
+    if langs == 'fr' and "multilingual" not in model:
+      model = CamembertForSequenceClassification.from_pretrained(model)
+    else:
+      model = BertForSequenceClassification.from_pretrained(model)
+  else:
+      model = BertForSequenceClassification.from_pretrained(model)
   training_args = TrainingArguments(
         output_dir='./results_pers',   # output directory
         evaluation_strategy="epoch",
@@ -218,8 +348,24 @@ def predict():
   ps = trainer.predict(test_dataset)
   softshit = torch.nn.Softmax()
   preds = softshit(torch.from_numpy(ps.predictions)).numpy()
+  pred_labels = []
+  for pred in preds:
+    pred_labels.append(np.argmax(pred))
+  df = pd.DataFrame({'sents':test_source, 'gold':test_labels, 'preds':pred_labels})
+  df.to_csv(model_path+".csv")
   eval(list(zip(preds.tolist(), ps.label_ids.tolist())))
 
-get_traintest_data('en')
-finetune()
-predict()
+langs = ['en', 'es', 'it', 'de', 'fr',]
+for lang in langs:
+  print("Training", lang, "monolingual model")
+  get_traintest_data(lang)
+  #finetune(lang, multiling=False)
+  #predict(lang, multiling=False)
+  #print("Training", lang, "monolingual multilingual BERT model")
+  #finetune(lang, multiling=True)
+  #predict(lang, multiling=True)
+  
+get_traintest_data(langs)
+#finetune(langs, multiling=True)
+#predict(langs, multiling=True)
+  
