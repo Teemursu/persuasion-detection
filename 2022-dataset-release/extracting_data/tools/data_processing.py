@@ -5,7 +5,7 @@ def process_data():
     import numpy as np
 
     langs = ["en", "de", "fr", "it", "es"]
-    df = pd.read_csv("data\persuasion_dialogue_dataset.csv")
+    df = pd.read_csv("data/persuasion_dialogue_dataset.csv")  # was a Windows-only backslash path
 
     def clean_source(source):
         source = [str(s) for s in source]
@@ -45,7 +45,7 @@ def process_data():
         if len(source) == 0:
             return np.nan
 
-    print(df["persuasion"].value_counts())
+    print(df["is_persuasion"].value_counts())  # was df["persuasion"] (KeyError)
     print(len(df))
     df = df.dropna(subset=["en"])
 
